@@ -9,6 +9,8 @@ from typing import Any, Iterable
 
 import pdfplumber
 
+from .ocr import ocr_pdf
+
 
 NUMBER = r"(\d{1,3}(?:[. ]\d{3})*(?:,\d+)?|\d+(?:[.,]\d+)?)"
 DATE = r"(\d{1,2}/\d{1,2}/\d{4})"
@@ -125,15 +127,33 @@ def _find_services(text: str) -> list[dict[str, Any]]:
     return services
 
 
-def read_invoice(path: Path) -> dict[str, Any]:
+def _extract_pdf_text(path: Path) -> list[str]:
+    with pdfplumber.open(path) as document:
+        return [(page.extract_text() or "") for page in document.pages]
+
+
+def extract_pages(
+    path: Path, use_ocr: bool = True, ocr_language: str | None = None
+) -> tuple[list[str], bool]:
+    pages = _extract_pdf_text(path)
+    if any(page.strip() for page in pages):
+        return pages, False
+    if not use_ocr:
+        raise ValueError("El PDF no contiene texto extraible y el OCR esta desactivado.")
+    pages = ocr_pdf(path, language=ocr_language)
+    if not any(page.strip() for page in pages):
+        raise ValueError("El OCR no ha podido reconocer texto en el PDF.")
+    return pages, True
+
+
+def read_invoice(
+    path: Path, use_ocr: bool = True, ocr_language: str | None = None
+) -> dict[str, Any]:
     if not path.is_file():
         raise FileNotFoundError(path)
 
-    with pdfplumber.open(path) as document:
-        pages = [(page.extract_text() or "") for page in document.pages]
+    pages, ocr_used = extract_pages(path, use_ocr=use_ocr, ocr_language=ocr_language)
     text = "\n".join(pages)
-    if not text.strip():
-        raise ValueError("El PDF no contiene texto extraible; necesitara OCR.")
 
     total = _find_invoice_total(text)
     consumption_total = _find_number(
@@ -164,7 +184,7 @@ def read_invoice(path: Path) -> dict[str, Any]:
 
     return {
         "schema_version": "1.0",
-        "source": {"filename": path.name, "pages": len(pages)},
+        "source": {"filename": path.name, "pages": len(pages), "ocr_used": ocr_used},
         "supplier": _detect_supplier(text),
         "billing_period": billing_period,
         "consumption": {

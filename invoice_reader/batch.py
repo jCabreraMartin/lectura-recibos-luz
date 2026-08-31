@@ -96,13 +96,17 @@ def build_history(invoices: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def process_folder(folder: Path) -> dict[str, Any]:
+def process_folder(
+    folder: Path, use_ocr: bool = True, ocr_language: str | None = None
+) -> dict[str, Any]:
     if not folder.is_dir():
         raise NotADirectoryError(folder)
     paths = sorted(folder.glob("*.pdf"))
     if not paths:
         raise ValueError(f"No se encontraron archivos PDF en {folder}")
-    return build_history([read_invoice(path) for path in paths])
+    return build_history(
+        [read_invoice(path, use_ocr=use_ocr, ocr_language=ocr_language) for path in paths]
+    )
 
 
 def _es(value: float | int | None, decimals: int = 2) -> str:
@@ -214,8 +218,13 @@ footer{{color:var(--muted);text-align:center;margin-top:24px;font-size:13px}}
 </main></body></html>"""
 
 
-def write_history(folder: Path, output_dir: Path) -> tuple[Path, Path, dict[str, Any]]:
-    history = process_folder(folder)
+def write_history(
+    folder: Path,
+    output_dir: Path,
+    use_ocr: bool = True,
+    ocr_language: str | None = None,
+) -> tuple[Path, Path, dict[str, Any]]:
+    history = process_folder(folder, use_ocr=use_ocr, ocr_language=ocr_language)
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / "historico_facturas.json"
     html_path = output_dir / "informe_historico.html"

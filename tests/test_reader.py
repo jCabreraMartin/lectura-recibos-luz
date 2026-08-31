@@ -1,5 +1,7 @@
 import unittest
 from decimal import Decimal
+from pathlib import Path
+from unittest.mock import patch
 
 from invoice_reader.reader import (
     _billing_period,
@@ -9,6 +11,7 @@ from invoice_reader.reader import (
     _find_amount,
     _find_number,
     _find_period_consumption,
+    extract_pages,
 )
 
 
@@ -54,6 +57,22 @@ class ReaderRulesTests(unittest.TestCase):
             _find_amount(text, (r"impuesto\s+sobre\s+electricidad",)),
             Decimal("5.01"),
         )
+
+    @patch("invoice_reader.reader.ocr_pdf", return_value=["texto reconocido"])
+    @patch("invoice_reader.reader._extract_pdf_text", return_value=[""])
+    def test_ocr_is_used_only_when_pdf_has_no_text(self, extract, ocr) -> None:
+        pages, used = extract_pages(Path("factura.pdf"))
+        self.assertEqual(pages, ["texto reconocido"])
+        self.assertTrue(used)
+        ocr.assert_called_once()
+
+    @patch("invoice_reader.reader.ocr_pdf")
+    @patch("invoice_reader.reader._extract_pdf_text", return_value=["texto digital"])
+    def test_ocr_is_skipped_for_digital_pdf(self, extract, ocr) -> None:
+        pages, used = extract_pages(Path("factura.pdf"))
+        self.assertEqual(pages, ["texto digital"])
+        self.assertFalse(used)
+        ocr.assert_not_called()
 
 
 if __name__ == "__main__":

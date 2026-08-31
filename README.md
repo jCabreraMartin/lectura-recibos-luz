@@ -39,6 +39,19 @@ Extrae actualmente:
 - servicios adicionales detectables por nombre;
 - advertencias para campos ausentes o PDF que necesite OCR.
 
+Si un PDF no contiene texto seleccionable, el lector aplica OCR local con
+Tesseract. Las imagenes intermedias se crean en una carpeta temporal y se borran
+automaticamente.
+
+En Windows, instala previamente el motor OCR y acepta el aviso de permisos:
+
+```powershell
+winget install --id tesseract-ocr.tesseract --exact
+```
+
+Si Tesseract esta en una ubicacion no estandar, define `TESSERACT_CMD` con la
+ruta completa de `tesseract.exe`.
+
 Las reglas comunes se prueban con datos sinteticos. Las facturas reales se usan
 solo de manera local para validar el resultado y nunca se incluyen en Git.
 
@@ -54,6 +67,13 @@ Guarda los PDF en una carpeta privada y ejecuta:
 
 ```powershell
 lectura-recibos-luz --folder facturas --output-dir salidas
+```
+
+Para desactivar el OCR o elegir idiomas:
+
+```powershell
+lectura-recibos-luz --folder facturas --output-dir salidas --no-ocr
+lectura-recibos-luz --folder facturas --output-dir salidas --ocr-language spa+eng
 ```
 
 Se generan dos archivos privados:

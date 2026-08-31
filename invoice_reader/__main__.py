@@ -14,20 +14,29 @@ def main() -> None:
     parser.add_argument("--folder", type=Path, help="Procesa todos los PDF de una carpeta.")
     parser.add_argument("--output", "-o", type=Path)
     parser.add_argument("--output-dir", type=Path, default=Path("salidas"))
+    parser.add_argument("--no-ocr", action="store_true", help="Desactiva el OCR automatico.")
+    parser.add_argument("--ocr-language", help="Idioma de Tesseract, por ejemplo spa+eng.")
     args = parser.parse_args()
 
     if bool(args.pdf) == bool(args.folder):
         parser.error("Indica un PDF o usa --folder, pero no ambas opciones.")
 
     if args.folder:
-        json_path, html_path, history = write_history(args.folder, args.output_dir)
+        json_path, html_path, history = write_history(
+            args.folder,
+            args.output_dir,
+            use_ocr=not args.no_ocr,
+            ocr_language=args.ocr_language,
+        )
         print(
             f"Procesadas {history['invoice_count']} facturas.\n"
             f"Historico: {json_path}\nInforme: {html_path}"
         )
         return
 
-    invoice = read_invoice(args.pdf)
+    invoice = read_invoice(
+        args.pdf, use_ocr=not args.no_ocr, ocr_language=args.ocr_language
+    )
     rendered = json.dumps(invoice, ensure_ascii=False, indent=2)
     if args.output:
         args.output.write_text(rendered + "\n", encoding="utf-8")
