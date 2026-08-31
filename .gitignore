@@ -7,4 +7,5 @@ build/
 facturas/
 salidas/
 *.private.json
+/resultado*.json
 
