@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lectura-recibos-luz"
+version = "0.1.0"
+description = "Lector local y extensible de facturas electricas en PDF"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["pdfplumber>=0.11,<1"]
+
+[project.scripts]
+lectura-recibos-luz = "invoice_reader.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["invoice_reader*"]
+
