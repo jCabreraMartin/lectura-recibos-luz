@@ -48,3 +48,19 @@ solo de manera local para validar el resultado y nunca se incluyen en Git.
 python -m unittest discover -s tests -v
 ```
 
+## Procesar una carpeta completa
+
+Guarda los PDF en una carpeta privada y ejecuta:
+
+```powershell
+lectura-recibos-luz --folder facturas --output-dir salidas
+```
+
+Se generan dos archivos privados:
+
+- `salidas/historico_facturas.json`, con todos los datos estructurados;
+- `salidas/informe_historico.html`, con resumen, evolucion, distribucion por
+  periodos y detalle de facturas.
+
+Las carpetas `facturas` y `salidas` estan excluidas de Git.
+
