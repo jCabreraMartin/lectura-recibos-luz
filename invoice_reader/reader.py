@@ -43,7 +43,7 @@ def _find_period_consumption(text: str, period: str, alias: str) -> Decimal | No
     # Give preference to the explicit consumption summary. Meter readings often
     # contain the same period names and much larger cumulative values.
     summary = re.search(
-        r"consumos\s+desagregados[^\n]{0,250}", text, flags=re.IGNORECASE
+        r"consumos\s+desagregados[\s\S]{0,500}", text, flags=re.IGNORECASE
     )
     scope = summary.group(0) if summary else text
     return _find_number(scope, (period, alias), r"kWh")

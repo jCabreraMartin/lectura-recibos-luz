@@ -37,6 +37,18 @@ class ReaderRulesTests(unittest.TestCase):
             _find_period_consumption(text, r"punta", r"P1"), Decimal("141.27")
         )
 
+    def test_consumption_summary_can_span_multiple_lines(self) -> None:
+        text = (
+            "Sus consumos desagregados han sido punta: 100,00 kWh;\n"
+            "llano: 100,00 kWh; valle 200,00 kWh."
+        )
+        self.assertEqual(
+            _find_period_consumption(text, r"llano", r"P2"), Decimal("100.00")
+        )
+        self.assertEqual(
+            _find_period_consumption(text, r"valle", r"P3"), Decimal("200.00")
+        )
+
     def test_specific_invoice_total_wins(self) -> None:
         text = "TOTAL ENERGIA 102,99 EUR\nTOTAL IMPORTE FACTURA 137,17 EUR"
         self.assertEqual(_find_invoice_total(text), Decimal("137.17"))
