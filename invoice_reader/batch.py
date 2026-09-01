@@ -6,7 +6,7 @@ import json
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .reader import read_invoice
 
@@ -179,6 +179,7 @@ def process_folder(
     use_ocr: bool = True,
     ocr_language: str | None = None,
     existing_history: dict[str, Any] | None = None,
+    progress_callback: Callable[[int, int, str, str], None] | None = None,
 ) -> dict[str, Any]:
     if not folder.is_dir():
         raise NotADirectoryError(folder)
@@ -208,11 +209,16 @@ def process_folder(
         "errors": [],
     }
 
-    for path in paths:
+    total = len(paths)
+    for index, path in enumerate(paths, start=1):
+        if progress_callback:
+            progress_callback(index - 1, total, path.name, "processing")
         fingerprint = _fingerprint(path)
         if fingerprint in by_hash:
             stats["skipped_count"] += 1
             stats["duplicate_count"] += 1
+            if progress_callback:
+                progress_callback(index, total, path.name, "skipped")
             continue
 
         previous = by_filename.get(path.name)
@@ -223,6 +229,8 @@ def process_folder(
         except Exception as exc:
             stats["error_count"] += 1
             stats["errors"].append({"filename": path.name, "message": str(exc)})
+            if progress_callback:
+                progress_callback(index, total, path.name, "error")
             continue
 
         invoice.setdefault("source", {})["sha256"] = fingerprint
@@ -239,6 +247,8 @@ def process_folder(
         invoices.append(invoice)
         by_filename[path.name] = invoice
         by_hash[fingerprint] = invoice
+        if progress_callback:
+            progress_callback(index, total, path.name, "processed")
 
     history = build_history(invoices)
     history["processing"] = stats
@@ -372,6 +382,7 @@ def write_history(
     output_dir: Path,
     use_ocr: bool = True,
     ocr_language: str | None = None,
+    progress_callback: Callable[[int, int, str, str], None] | None = None,
 ) -> tuple[Path, Path, dict[str, Any]]:
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / "historico_facturas.json"
@@ -387,10 +398,10 @@ def write_history(
         use_ocr=use_ocr,
         ocr_language=ocr_language,
         existing_history=existing_history,
+        progress_callback=progress_callback,
     )
     json_path.write_text(
         json.dumps(history, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     html_path.write_text(render_html(history), encoding="utf-8")
     return json_path, html_path, history
-
