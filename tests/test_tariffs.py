@@ -28,6 +28,7 @@ class TariffTests(unittest.TestCase):
         self.assertEqual(result["breakdown"]["energy_eur"], 10)
         self.assertEqual(result["estimated_total_eur"], 21.25)
         self.assertEqual(result["historical_savings_eur"], 28.75)
+        self.assertAlmostEqual(result["annualized_savings_eur"], 338.51, places=2)
 
     def test_incomplete_offer_never_claims_final_savings(self):
         offer = {
@@ -56,6 +57,22 @@ class TariffTests(unittest.TestCase):
         rendered = render_comparison_html(comparison)
         self.assertIn("Tres periodos", rendered)
         self.assertIn("Incompleta", rendered)
+
+    def test_complete_offers_are_ranked_by_estimated_cost(self):
+        base = {
+            "supplier": "Compania ficticia",
+            "power": {"punta_eur_kw_day": 0, "valle_eur_kw_day": 0},
+            "services_monthly_eur": 0,
+            "other_monthly_eur": 0,
+            "meter_rental_eur_day": 0,
+            "electricity_tax_rate": 0,
+            "vat_rate": 0,
+        }
+        expensive = {**base, "name": "Cara", "energy": {"type": "fixed", "price_eur_kwh": 0.2}}
+        cheap = {**base, "name": "Barata", "energy": {"type": "fixed", "price_eur_kwh": 0.1}}
+        comparison = compare_offers(self.history, [expensive, cheap])
+        self.assertEqual([item["name"] for item in comparison["offers"]], ["Barata", "Cara"])
+        self.assertEqual(comparison["offers"][0]["rank"], 1)
 
 
 if __name__ == "__main__":
