@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import hashlib
 import json
 from collections import defaultdict
 from datetime import date
@@ -96,17 +97,83 @@ def build_history(invoices: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _fingerprint(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def process_folder(
-    folder: Path, use_ocr: bool = True, ocr_language: str | None = None
+    folder: Path,
+    use_ocr: bool = True,
+    ocr_language: str | None = None,
+    existing_history: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not folder.is_dir():
         raise NotADirectoryError(folder)
     paths = sorted(folder.glob("*.pdf"))
     if not paths:
         raise ValueError(f"No se encontraron archivos PDF en {folder}")
-    return build_history(
-        [read_invoice(path, use_ocr=use_ocr, ocr_language=ocr_language) for path in paths]
-    )
+
+    invoices = list((existing_history or {}).get("invoices", []))
+    by_hash = {
+        invoice.get("source", {}).get("sha256"): invoice
+        for invoice in invoices
+        if invoice.get("source", {}).get("sha256")
+    }
+    by_filename = {
+        invoice.get("source", {}).get("filename"): invoice
+        for invoice in invoices
+        if invoice.get("source", {}).get("filename")
+    }
+    stats: dict[str, Any] = {
+        "scanned_pdf_count": len(paths),
+        "new_count": 0,
+        "updated_count": 0,
+        "indexed_count": 0,
+        "skipped_count": 0,
+        "duplicate_count": 0,
+        "error_count": 0,
+        "errors": [],
+    }
+
+    for path in paths:
+        fingerprint = _fingerprint(path)
+        if fingerprint in by_hash:
+            stats["skipped_count"] += 1
+            stats["duplicate_count"] += 1
+            continue
+
+        previous = by_filename.get(path.name)
+        try:
+            invoice = read_invoice(
+                path, use_ocr=use_ocr, ocr_language=ocr_language
+            )
+        except Exception as exc:
+            stats["error_count"] += 1
+            stats["errors"].append({"filename": path.name, "message": str(exc)})
+            continue
+
+        invoice.setdefault("source", {})["sha256"] = fingerprint
+        if previous:
+            invoices.remove(previous)
+            old_hash = previous.get("source", {}).get("sha256")
+            if old_hash:
+                by_hash.pop(old_hash, None)
+                stats["updated_count"] += 1
+            else:
+                stats["indexed_count"] += 1
+        else:
+            stats["new_count"] += 1
+        invoices.append(invoice)
+        by_filename[path.name] = invoice
+        by_hash[fingerprint] = invoice
+
+    history = build_history(invoices)
+    history["processing"] = stats
+    return history
 
 
 def _es(value: float | int | None, decimals: int = 2) -> str:
@@ -224,10 +291,21 @@ def write_history(
     use_ocr: bool = True,
     ocr_language: str | None = None,
 ) -> tuple[Path, Path, dict[str, Any]]:
-    history = process_folder(folder, use_ocr=use_ocr, ocr_language=ocr_language)
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / "historico_facturas.json"
     html_path = output_dir / "informe_historico.html"
+    existing_history = None
+    if json_path.is_file():
+        try:
+            existing_history = json.loads(json_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            existing_history = None
+    history = process_folder(
+        folder,
+        use_ocr=use_ocr,
+        ocr_language=ocr_language,
+        existing_history=existing_history,
+    )
     json_path.write_text(
         json.dumps(history, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
