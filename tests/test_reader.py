@@ -11,6 +11,8 @@ from invoice_reader.reader import (
     _find_amount,
     _find_number,
     _find_period_consumption,
+    _find_power,
+    _find_services,
     extract_pages,
 )
 
@@ -58,6 +60,36 @@ class ReaderRulesTests(unittest.TestCase):
         self.assertEqual(
             period,
             {"start": "2026-06-17", "end": "2026-07-19", "days": 32},
+        )
+
+    def test_endesa_official_example_labels(self) -> None:
+        text = (
+            "ENDESA ENERGIA\n"
+            "De 03/08/2021 a 04/09/2021 (32 dias)\n"
+            "Consumo total 384,294 kWh\n"
+            "Potencias contratadas: punta 3,450 kW; valle 3,450 kW\n"
+            "Energia 18,12 EUR\n"
+            "Impuesto electricidad (30,19 x 5,112696 %) 1,54 EUR\n"
+            "Importe Servicios Endesa X 4,07 EUR\n"
+            "Total importe a pagar 39,91 EUR"
+        )
+        self.assertEqual(
+            _billing_period(text),
+            {"start": "2021-08-03", "end": "2021-09-04", "days": 32},
+        )
+        self.assertEqual(_find_power(text, "punta"), Decimal("3.450"))
+        self.assertEqual(_find_power(text, "valle"), Decimal("3.450"))
+        self.assertEqual(_find_invoice_total(text), Decimal("39.91"))
+        self.assertEqual(
+            _find_amount(text, (r"(?:total\s+)?energ.?a",)), Decimal("18.12")
+        )
+        self.assertEqual(
+            _find_amount(text, (r"impuesto\s+(?:sobre\s+)?electricidad",)),
+            Decimal("1.54"),
+        )
+        self.assertEqual(
+            _find_services(text),
+            [{"name": "Importe Servicios Endesa X", "amount_eur": 4.07}],
         )
 
     def test_supplier(self) -> None:
