@@ -88,3 +88,9 @@ Se generan dos archivos privados:
 
 Las carpetas `facturas` y `salidas` estan excluidas de Git.
 
+Las siguientes ejecuciones son incrementales: cada PDF se identifica por su
+huella SHA-256, se omiten copias idénticas aunque tengan otro nombre y solo se
+leen los archivos nuevos o modificados. El histórico conserva facturas ya
+procesadas aunque el PDF original deje de estar en la carpeta. El resumen de la
+ejecución indica nuevas, actualizadas, indexadas, duplicadas y errores.
+
