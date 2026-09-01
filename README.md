@@ -116,3 +116,15 @@ carpetas, completar o cargar una oferta, procesar las facturas y abrir los dos
 informes sin utilizar comandos. El formulario admite coma decimal y guarda la
 oferta en `ofertas.private.json`, excluido de Git.
 
+El botón `Buscar ofertas actuales` consulta únicamente páginas públicas
+oficiales de Endesa, Naturgy y TotalEnergies. El consumo y las facturas permanecen
+en el equipo. La aplicación guarda la URL y fecha de consulta, aplica las tarifas
+al histórico local y muestra los supuestos utilizados. Una fuente que cambie de
+formato se registra como error sin impedir que se comparen las demás.
+
+También puede ejecutarse desde terminal:
+
+```powershell
+lectura-recibos-luz --folder facturas --output-dir salidas --search-offers
+```
+
