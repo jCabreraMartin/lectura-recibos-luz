@@ -109,20 +109,44 @@ class OptimizerApp(tk.Tk):
         style = ttk.Style(self)
         style.theme_use("vista" if "vista" in style.theme_names() else "clam")
         style.configure("Title.TLabel", font=("Segoe UI", 22, "bold"), foreground="#173b78")
+        style.configure("Subtitle.TLabel", font=("Segoe UI", 11), foreground="#50627a")
         style.configure("Section.TLabelframe.Label", font=("Segoe UI", 11, "bold"))
+        style.configure("Action.TButton", font=("Segoe UI", 11, "bold"), padding=(14, 10))
         root = ttk.Frame(self, padding=22)
         root.pack(fill="both", expand=True)
         ttk.Label(root, text="Optimizador de factura electrica", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(root, text="Procesamiento local: las facturas y ofertas privadas no salen de este equipo.").pack(anchor="w", pady=(2, 16))
+        ttk.Label(root, text="Tus facturas y consumos se procesan siempre en este equipo.", style="Subtitle.TLabel").pack(anchor="w", pady=(2, 14))
 
-        locations = ttk.LabelFrame(root, text="Carpetas", style="Section.TLabelframe", padding=12)
-        locations.pack(fill="x")
-        self._path_row(locations, "Facturas", self.folder, self._choose_folder, 0)
-        self._path_row(locations, "Salidas", self.output, self._choose_output, 1)
-        self._path_row(locations, "Ofertas", self.offers_path, self._choose_offers, 2)
+        notebook = ttk.Notebook(root)
+        notebook.pack(fill="both", expand=True)
+        home = ttk.Frame(notebook, padding=18)
+        manual = ttk.Frame(notebook, padding=18)
+        settings = ttk.Frame(notebook, padding=18)
+        notebook.add(home, text="Inicio")
+        notebook.add(manual, text="Oferta manual")
+        notebook.add(settings, text="Configuracion")
 
-        offer = ttk.LabelFrame(root, text="Oferta electrica", style="Section.TLabelframe", padding=12)
-        offer.pack(fill="both", expand=True, pady=14)
+        ttk.Label(home, text="¿Que quieres hacer?", font=("Segoe UI", 16, "bold")).pack(anchor="w", pady=(0, 12))
+        history_card = ttk.LabelFrame(home, text="1. Actualizar el historico", style="Section.TLabelframe", padding=16)
+        history_card.pack(fill="x", pady=6)
+        ttk.Label(history_card, text="Lee solo las facturas nuevas o modificadas y actualiza el informe de consumo.", wraplength=620).pack(side="left", fill="x", expand=True)
+        self.history_button = ttk.Button(history_card, text="Actualizar facturas", style="Action.TButton", command=self._start_history)
+        self.history_button.pack(side="right", padx=(16, 0))
+
+        search_card = ttk.LabelFrame(home, text="2. Buscar una tarifa mejor", style="Section.TLabelframe", padding=16)
+        search_card.pack(fill="x", pady=6)
+        ttk.Label(search_card, text="Consulta ofertas publicas actuales y calcula cuanto habrias pagado con tu consumo real.", wraplength=620).pack(side="left", fill="x", expand=True)
+        self.search_button = ttk.Button(search_card, text="Buscar ofertas", style="Action.TButton", command=self._start_search)
+        self.search_button.pack(side="right", padx=(16, 0))
+
+        reports = ttk.LabelFrame(home, text="3. Ver resultados", style="Section.TLabelframe", padding=16)
+        reports.pack(fill="x", pady=6)
+        ttk.Button(reports, text="Abrir informe historico", command=lambda: self._open_report("history")).pack(side="left")
+        ttk.Button(reports, text="Abrir comparacion de tarifas", command=lambda: self._open_report("comparison")).pack(side="left", padx=10)
+        ttk.Label(home, text="Usa 'Oferta manual' solamente para comparar una propuesta recibida por telefono, correo o documento.", foreground="#66758a", wraplength=760).pack(anchor="w", pady=(16, 0))
+
+        offer = ttk.LabelFrame(manual, text="Datos de la oferta", style="Section.TLabelframe", padding=12)
+        offer.pack(fill="both", expand=True)
         labels = (
             ("name", "Nombre de la oferta"), ("supplier", "Comercializadora"),
             ("fixed_price", "Energia fija (EUR/kWh)"), ("punta_price", "Energia punta (EUR/kWh)"),
@@ -147,19 +171,21 @@ class OptimizerApp(tk.Tk):
         offer.columnconfigure(1, weight=1)
         offer.columnconfigure(3, weight=1)
 
-        actions = ttk.Frame(root)
-        actions.pack(fill="x")
+        actions = ttk.Frame(manual)
+        actions.pack(fill="x", pady=(12, 0))
         ttk.Button(actions, text="Guardar oferta", command=self._save_offer).pack(side="left")
         ttk.Button(actions, text="Cargar oferta", command=self._load_offer).pack(side="left", padx=8)
-        self.process_button = ttk.Button(actions, text="Procesar y comparar", command=self._start_processing)
+        self.process_button = ttk.Button(actions, text="Comparar esta oferta", style="Action.TButton", command=self._start_processing)
         self.process_button.pack(side="right")
-        self.search_button = ttk.Button(actions, text="Buscar ofertas actuales", command=self._start_search)
-        self.search_button.pack(side="right", padx=8)
+
+        locations = ttk.LabelFrame(settings, text="Ubicaciones", style="Section.TLabelframe", padding=16)
+        locations.pack(fill="x")
+        self._path_row(locations, "Facturas", self.folder, self._choose_folder, 0)
+        self._path_row(locations, "Salidas", self.output, self._choose_output, 1)
+        self._path_row(locations, "Ofertas", self.offers_path, self._choose_offers, 2)
+        ttk.Label(settings, text="Normalmente no necesitas cambiar estas rutas. Las carpetas privadas estan excluidas del repositorio.", foreground="#66758a", wraplength=760).pack(anchor="w", pady=14)
+
         ttk.Label(root, textvariable=self.status, wraplength=850).pack(fill="x", pady=(14, 8))
-        reports = ttk.Frame(root)
-        reports.pack(fill="x")
-        ttk.Button(reports, text="Abrir informe historico", command=lambda: self._open_report("history")).pack(side="left")
-        ttk.Button(reports, text="Abrir comparacion", command=lambda: self._open_report("comparison")).pack(side="left", padx=8)
         self._toggle_energy_fields()
 
     def _path_row(self, parent: ttk.LabelFrame, label: str, variable: tk.StringVar, command: Any, row: int) -> None:
@@ -223,13 +249,33 @@ class OptimizerApp(tk.Tk):
     def _start_processing(self) -> None:
         if not self._save_offer():
             return
-        self.process_button.configure(state="disabled")
+        self._set_busy(True)
         self.status.set("Procesando facturas y comparando la oferta...")
         threading.Thread(target=self._process, daemon=True).start()
 
+    def _start_history(self) -> None:
+        self._set_busy(True)
+        self.status.set("Actualizando el historico de facturas...")
+        threading.Thread(target=self._history, daemon=True).start()
+
+    def _history(self) -> None:
+        try:
+            _json_path, html_path, history = write_history(
+                Path(self.folder.get()), Path(self.output.get())
+            )
+            self.report_paths["history"] = html_path
+            stats = history["processing"]
+            result = (
+                f"Historico actualizado: {history['invoice_count']} facturas; "
+                f"nuevas {stats['new_count']}, omitidas {stats['skipped_count']}, "
+                f"errores {stats['error_count']}."
+            )
+            self.after(0, lambda: self._finish(result))
+        except Exception as exc:
+            self.after(0, lambda: self._finish(f"Error al actualizar: {exc}", error=True))
+
     def _start_search(self) -> None:
-        self.process_button.configure(state="disabled")
-        self.search_button.configure(state="disabled")
+        self._set_busy(True)
         self.status.set("Consultando tarifas publicas oficiales y comparando localmente...")
         threading.Thread(target=self._search, daemon=True).start()
 
@@ -266,11 +312,16 @@ class OptimizerApp(tk.Tk):
             self.after(0, lambda: self._finish(f"Error: {exc}", error=True))
 
     def _finish(self, message: str, error: bool = False) -> None:
-        self.process_button.configure(state="normal")
-        self.search_button.configure(state="normal")
+        self._set_busy(False)
         self.status.set(message)
         if error:
             messagebox.showerror("No se pudo procesar", message)
+
+    def _set_busy(self, busy: bool) -> None:
+        state = "disabled" if busy else "normal"
+        self.process_button.configure(state=state)
+        self.search_button.configure(state=state)
+        self.history_button.configure(state=state)
 
     def _open_report(self, key: str) -> None:
         default = Path(self.output.get()) / ("informe_historico.html" if key == "history" else "comparacion_tarifas.html")
