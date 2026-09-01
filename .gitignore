@@ -10,3 +10,4 @@ salidas/
 /resultado*.json
 tmp/
 dist/
+/configuracion.json
