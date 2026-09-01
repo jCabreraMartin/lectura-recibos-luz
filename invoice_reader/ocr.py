@@ -30,9 +30,24 @@ def find_tesseract() -> Path:
     )
 
 
-def _available_languages(command: Path) -> set[str]:
+def find_tessdata() -> Path | None:
+    configured = os.environ.get("TESSDATA_PREFIX")
+    candidates = [
+        Path(configured) if configured else None,
+        Path(os.environ.get("LOCALAPPDATA", "")) / "lectura-recibos-luz/tessdata",
+    ]
+    for candidate in candidates:
+        if candidate and candidate.is_dir() and any(candidate.glob("*.traineddata")):
+            return candidate
+    return None
+
+
+def _available_languages(command: Path, tessdata: Path | None = None) -> set[str]:
+    arguments = [str(command), "--list-langs"]
+    if tessdata:
+        arguments.extend(["--tessdata-dir", str(tessdata)])
     result = subprocess.run(
-        [str(command), "--list-langs"],
+        arguments,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -46,8 +61,10 @@ def _available_languages(command: Path) -> set[str]:
     }
 
 
-def _choose_language(command: Path, requested: str | None) -> str:
-    available = _available_languages(command)
+def _choose_language(
+    command: Path, requested: str | None, tessdata: Path | None = None
+) -> str:
+    available = _available_languages(command, tessdata)
     if requested:
         missing = set(requested.split("+")) - available
         if missing:
@@ -68,7 +85,8 @@ def _choose_language(command: Path, requested: str | None) -> str:
 
 def ocr_pdf(path: Path, language: str | None = None, scale: float = 2.5) -> list[str]:
     command = find_tesseract()
-    selected_language = _choose_language(command, language)
+    tessdata = find_tessdata()
+    selected_language = _choose_language(command, language, tessdata)
     document = pdfium.PdfDocument(str(path))
     pages: list[str] = []
     try:
@@ -79,16 +97,19 @@ def ocr_pdf(path: Path, language: str | None = None, scale: float = 2.5) -> list
                 image_path = temp_dir / f"pagina-{index + 1}.png"
                 bitmap = page.render(scale=scale)
                 bitmap.to_pil().save(image_path, format="PNG")
+                arguments = [
+                    str(command),
+                    str(image_path),
+                    "stdout",
+                    "-l",
+                    selected_language,
+                    "--psm",
+                    "6",
+                ]
+                if tessdata:
+                    arguments.extend(["--tessdata-dir", str(tessdata)])
                 result = subprocess.run(
-                    [
-                        str(command),
-                        str(image_path),
-                        "stdout",
-                        "-l",
-                        selected_language,
-                        "--psm",
-                        "6",
-                    ],
+                    arguments,
                     capture_output=True,
                     text=True,
                     encoding="utf-8",
