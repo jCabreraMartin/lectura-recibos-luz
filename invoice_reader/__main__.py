@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .batch import write_history
 from .reader import read_invoice
+from .market import search_compare_and_write
 from .tariffs import write_comparison
 
 
@@ -18,10 +19,13 @@ def main() -> None:
     parser.add_argument("--no-ocr", action="store_true", help="Desactiva el OCR automatico.")
     parser.add_argument("--ocr-language", help="Idioma de Tesseract, por ejemplo spa+eng.")
     parser.add_argument("--offers", type=Path, help="JSON privado con ofertas para comparar.")
+    parser.add_argument("--search-offers", action="store_true", help="Busca y compara ofertas publicas actuales.")
     args = parser.parse_args()
 
     if bool(args.pdf) == bool(args.folder):
         parser.error("Indica un PDF o usa --folder, pero no ambas opciones.")
+    if args.offers and args.search_offers:
+        parser.error("Usa --offers o --search-offers, pero no ambas opciones.")
 
     if args.folder:
         json_path, html_path, history = write_history(
@@ -46,6 +50,15 @@ def main() -> None:
             print(
                 f"Comparadas {len(comparison['offers'])} ofertas; completas: {complete}.\n"
                 f"Comparacion: {comparison_json}\nInforme: {comparison_html}"
+            )
+        if args.search_offers:
+            offers_json, comparison_json, comparison_html, comparison = search_compare_and_write(
+                history, args.output_dir
+            )
+            print(
+                f"Encontradas {len(comparison['offers'])} ofertas publicas.\n"
+                f"Catalogo: {offers_json}\nComparacion: {comparison_json}\n"
+                f"Informe: {comparison_html}"
             )
         return
 
