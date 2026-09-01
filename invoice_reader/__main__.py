@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .batch import write_history
 from .reader import read_invoice
+from .tariffs import write_comparison
 
 
 def main() -> None:
@@ -16,6 +17,7 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=Path("salidas"))
     parser.add_argument("--no-ocr", action="store_true", help="Desactiva el OCR automatico.")
     parser.add_argument("--ocr-language", help="Idioma de Tesseract, por ejemplo spa+eng.")
+    parser.add_argument("--offers", type=Path, help="JSON privado con ofertas para comparar.")
     args = parser.parse_args()
 
     if bool(args.pdf) == bool(args.folder):
@@ -36,6 +38,15 @@ def main() -> None:
             f"errores: {stats['error_count']}.\n"
             f"Historico: {json_path}\nInforme: {html_path}"
         )
+        if args.offers:
+            comparison_json, comparison_html, comparison = write_comparison(
+                history, args.offers, args.output_dir
+            )
+            complete = sum(offer["status"] == "complete" for offer in comparison["offers"])
+            print(
+                f"Comparadas {len(comparison['offers'])} ofertas; completas: {complete}.\n"
+                f"Comparacion: {comparison_json}\nInforme: {comparison_html}"
+            )
         return
 
     invoice = read_invoice(
