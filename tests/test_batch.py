@@ -36,6 +36,18 @@ class BatchTests(unittest.TestCase):
             ]
         )
 
+    def test_progress_callback_reports_each_pdf(self):
+        with TemporaryDirectory() as temp:
+            folder = Path(temp)
+            (folder / "factura.pdf").write_bytes(b"pdf")
+            events = []
+            parsed = invoice("2026-01-01", "2026-02-01", 31, 100, 20, 30, 50, 30)
+            parsed["source"]["filename"] = "factura.pdf"
+            with patch("invoice_reader.batch.read_invoice", return_value=parsed):
+                process_folder(folder, progress_callback=lambda *event: events.append(event))
+            self.assertEqual(events[0], (0, 1, "factura.pdf", "processing"))
+            self.assertEqual(events[-1], (1, 1, "factura.pdf", "processed"))
+
     def test_aggregate_totals(self):
         self.assertEqual(self.history["invoice_count"], 2)
         self.assertEqual(self.history["coverage"]["days"], 59)
@@ -133,4 +145,3 @@ class BatchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
