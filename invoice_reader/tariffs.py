@@ -110,6 +110,9 @@ def compare_offer(history: dict[str, Any], offer: dict[str, Any]) -> dict[str, A
     actual_total = history.get("totals", {}).get("invoice_eur")
     estimated_total = known_total if complete else None
     savings = round(float(actual_total) - estimated_total, 2) if estimated_total is not None and actual_total is not None else None
+    coverage_days = float(history.get("coverage", {}).get("days") or 0)
+    annualized_cost = round(estimated_total / coverage_days * 365, 2) if estimated_total is not None and coverage_days else None
+    annualized_savings = round(savings / coverage_days * 365, 2) if savings is not None and coverage_days else None
     if missing_fields:
         warnings.insert(0, "Faltan datos de la oferta: " + ", ".join(missing_fields) + ".")
 
@@ -123,17 +126,33 @@ def compare_offer(history: dict[str, Any], offer: dict[str, Any]) -> dict[str, A
         "estimated_total_eur": estimated_total,
         "historical_actual_total_eur": actual_total,
         "historical_savings_eur": savings,
+        "annualized_cost_eur": annualized_cost,
+        "annualized_savings_eur": annualized_savings,
         "warnings": list(dict.fromkeys(warnings)),
+        "source_url": offer.get("source_url"),
+        "retrieved_at": offer.get("retrieved_at"),
+        "conditions": offer.get("conditions"),
+        "confidence": offer.get("confidence"),
+        "assumptions": offer.get("assumptions", []),
     }
 
 
 def compare_offers(history: dict[str, Any], offers: list[dict[str, Any]]) -> dict[str, Any]:
+    results = [compare_offer(history, offer) for offer in offers]
+    results.sort(
+        key=lambda offer: (
+            offer["estimated_total_eur"] is None,
+            offer["estimated_total_eur"] if offer["estimated_total_eur"] is not None else float("inf"),
+        )
+    )
+    for rank, offer in enumerate((item for item in results if item["status"] == "complete"), start=1):
+        offer["rank"] = rank
     return {
         "schema_version": "1.0",
         "invoice_count": history.get("invoice_count", 0),
         "coverage": history.get("coverage"),
         "historical_actual_total_eur": history.get("totals", {}).get("invoice_eur"),
-        "offers": [compare_offer(history, offer) for offer in offers],
+        "offers": results,
     }
 
 
@@ -150,15 +169,20 @@ def render_comparison_html(comparison: dict[str, Any]) -> str:
         result = _eur(offer["estimated_total_eur"])
         savings = _eur(offer["historical_savings_eur"])
         warnings = "".join(f"<li>{html.escape(item)}</li>" for item in offer["warnings"])
+        assumptions = "".join(f"<li>{html.escape(item)}</li>" for item in offer.get("assumptions", []))
+        source = offer.get("source_url")
+        source_link = f"<a href='{html.escape(source)}' target='_blank' rel='noreferrer'>Ver fuente oficial</a>" if source else ""
         cards.append(
             "<article>"
             f"<span class='status {'ok' if complete else 'pending'}'>{'Completa' if complete else 'Incompleta'}</span>"
-            f"<h2>{html.escape(offer['name'])}</h2>"
+            f"<h2>{('#' + str(offer['rank']) + ' ') if offer.get('rank') else ''}{html.escape(offer['name'])}</h2>"
             f"<p>{html.escape(offer.get('supplier') or 'Comercializadora sin indicar')}</p>"
             f"<div class='metric'><small>Coste estimado</small><strong>{result}</strong></div>"
             f"<div class='metric'><small>Ahorro historico</small><strong>{savings}</strong></div>"
+            f"<div class='metric'><small>Ahorro anualizado</small><strong>{_eur(offer.get('annualized_savings_eur'))}</strong></div>"
             f"<div class='metric'><small>Coste parcial conocido</small><strong>{_eur(offer['known_partial_total_eur'])}</strong></div>"
-            f"<ul>{warnings}</ul>"
+            f"<p>{html.escape(offer.get('conditions') or '')}</p>{source_link}"
+            f"<ul>{warnings}{assumptions}</ul>"
             "</article>"
         )
     return f"""<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
