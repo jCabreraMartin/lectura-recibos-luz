@@ -51,6 +51,23 @@ class BatchTests(unittest.TestCase):
         self.assertIn("Informe historico de electricidad", report)
         self.assertNotIn("factura-privada.pdf", report)
 
+    def test_consumption_and_unit_cost_alerts(self):
+        history = build_history(
+            [
+                invoice("2026-01-01", "2026-02-01", 31, 100, 20, 30, 50, 20),
+                invoice("2026-02-01", "2026-03-01", 28, 100, 20, 30, 50, 20),
+                invoice("2026-03-01", "2026-04-01", 31, 100, 20, 30, 50, 20),
+                invoice("2026-04-01", "2026-05-01", 30, 150, 30, 45, 75, 45),
+            ]
+        )
+        self.assertEqual(
+            {alert["type"] for alert in history["alerts"]},
+            {"consumption_increase", "unit_cost_increase"},
+        )
+        report = render_html(history)
+        self.assertIn("Alertas detectadas", report)
+        self.assertIn("buscar ofertas actuales", report)
+
     @patch("invoice_reader.batch.read_invoice")
     def test_incremental_processing_and_duplicate_detection(self, reader):
         with TemporaryDirectory() as temporary:
