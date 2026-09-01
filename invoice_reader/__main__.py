@@ -28,8 +28,12 @@ def main() -> None:
             use_ocr=not args.no_ocr,
             ocr_language=args.ocr_language,
         )
+        stats = history["processing"]
         print(
-            f"Procesadas {history['invoice_count']} facturas.\n"
+            f"Historico: {history['invoice_count']} facturas. "
+            f"Nuevas: {stats['new_count']}; actualizadas: {stats['updated_count']}; "
+            f"indexadas: {stats['indexed_count']}; omitidas: {stats['skipped_count']}; "
+            f"errores: {stats['error_count']}.\n"
             f"Historico: {json_path}\nInforme: {html_path}"
         )
         return
