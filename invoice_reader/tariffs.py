@@ -172,25 +172,27 @@ def render_comparison_html(comparison: dict[str, Any]) -> str:
         assumptions = "".join(f"<li>{html.escape(item)}</li>" for item in offer.get("assumptions", []))
         source = offer.get("source_url")
         source_link = f"<a href='{html.escape(source)}' target='_blank' rel='noreferrer'>Ver fuente oficial</a>" if source else ""
+        rank = str(offer.get("rank") or "-")
         cards.append(
             "<article>"
-            f"<span class='status {'ok' if complete else 'pending'}'>{'Completa' if complete else 'Incompleta'}</span>"
-            f"<h2>{('#' + str(offer['rank']) + ' ') if offer.get('rank') else ''}{html.escape(offer['name'])}</h2>"
-            f"<p>{html.escape(offer.get('supplier') or 'Comercializadora sin indicar')}</p>"
+            f"<div class='rank'>{rank}<small>puesto</small></div>"
+            f"<div class='identity'><span class='status {'ok' if complete else 'pending'}'>{'Completa' if complete else 'Incompleta'}</span>"
+            f"<h2>{html.escape(offer['name'])}</h2>"
+            f"<p>{html.escape(offer.get('supplier') or 'Comercializadora sin indicar')}</p></div>"
             f"<div class='metric'><small>Coste estimado</small><strong>{result}</strong></div>"
-            f"<div class='metric'><small>Ahorro historico</small><strong>{savings}</strong></div>"
-            f"<div class='metric'><small>Ahorro anualizado</small><strong>{_eur(offer.get('annualized_savings_eur'))}</strong></div>"
-            f"<div class='metric'><small>Coste parcial conocido</small><strong>{_eur(offer['known_partial_total_eur'])}</strong></div>"
-            f"<p>{html.escape(offer.get('conditions') or '')}</p>{source_link}"
-            f"<ul>{warnings}{assumptions}</ul>"
+            f"<div class='metric saving'><small>Ahorro anualizado</small><strong>{_eur(offer.get('annualized_savings_eur'))}</strong>"
+            f"<span>En el historico: {savings}</span></div>"
+            f"<details><summary>Condiciones y supuestos</summary><p>{html.escape(offer.get('conditions') or '')}</p>{source_link}"
+            f"<ul>{warnings}{assumptions}</ul></details>"
             "</article>"
         )
     return f"""<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Comparacion de tarifas electricas</title><style>
 body{{margin:0;background:#f4f7fb;color:#152238;font:15px/1.5 Segoe UI,Arial,sans-serif}}main{{max-width:1050px;margin:auto;padding:40px 24px}}
-header{{background:linear-gradient(135deg,#173b78,#276ef1);color:white;padding:28px;border-radius:18px}}h1{{margin:0 0 8px}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;margin-top:20px}}
-article{{background:white;border:1px solid #dfe7f1;border-radius:16px;padding:22px}}article h2{{margin:12px 0 0}}article p{{color:#66758a;margin-top:2px}}.status{{display:inline-block;padding:4px 9px;border-radius:20px;font-size:12px}}.ok{{background:#dff6e8;color:#17633a}}.pending{{background:#fff0cf;color:#805500}}
-.metric{{border-top:1px solid #e6edf5;padding:12px 0}}.metric small{{display:block;color:#66758a}}.metric strong{{font-size:20px}}ul{{padding-left:20px;color:#805500}}
+header{{background:linear-gradient(135deg,#173b78,#276ef1);color:white;padding:28px;border-radius:18px}}h1{{margin:0 0 8px}}.grid{{display:flex;flex-direction:column;gap:12px;margin-top:20px}}
+article{{display:grid;grid-template-columns:70px minmax(230px,1.5fr) minmax(145px,.8fr) minmax(170px,.9fr);gap:18px;align-items:center;background:white;border:1px solid #dfe7f1;border-radius:14px;padding:18px 20px}}article h2{{margin:7px 0 0;font-size:19px}}article p{{color:#66758a;margin:2px 0}}.rank{{font-size:30px;font-weight:700;color:#276ef1;text-align:center}}.rank small{{display:block;font-size:11px;font-weight:400;color:#66758a;text-transform:uppercase}}.status{{display:inline-block;padding:3px 8px;border-radius:20px;font-size:11px}}.ok{{background:#dff6e8;color:#17633a}}.pending{{background:#fff0cf;color:#805500}}
+.metric{{padding-left:18px;border-left:1px solid #e6edf5}}.metric small,.metric span{{display:block;color:#66758a;font-size:12px}}.metric strong{{display:block;font-size:20px}}.saving strong{{color:#17633a}}details{{grid-column:2/-1;border-top:1px solid #e6edf5;padding-top:10px}}summary{{cursor:pointer;color:#276ef1}}details ul{{padding-left:20px;color:#805500}}
+@media(max-width:760px){{article{{grid-template-columns:55px 1fr}}.metric,details{{grid-column:2;border-left:0;padding-left:0}}}}
 </style></head><body><main><header><h1>Comparacion de tarifas</h1><p>{comparison['invoice_count']} facturas historicas. Coste real: {_eur(comparison['historical_actual_total_eur'])}</p></header><div class="grid">{''.join(cards)}</div></main></body></html>"""
 
 
