@@ -1,5 +1,5 @@
 #define MyAppName "Optimizador de Factura Electrica"
-#define MyAppVersion "0.1.1"
+#define MyAppVersion "0.1.2"
 #define MyAppPublisher "Jose Cabrera Martin"
 #define MyAppExeName "OptimizadorFacturaElectrica.exe"
 
