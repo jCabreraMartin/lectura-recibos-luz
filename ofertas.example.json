@@ -1,0 +1,22 @@
+{
+  "offers": [
+    {
+      "name": "Oferta fija de ejemplo",
+      "supplier": "Comercializadora de ejemplo",
+      "energy": {
+        "type": "fixed",
+        "price_eur_kwh": 0.12
+      },
+      "power": {
+        "punta_eur_kw_day": null,
+        "valle_eur_kw_day": null
+      },
+      "services_monthly_eur": null,
+      "other_monthly_eur": null,
+      "meter_rental_eur_day": null,
+      "electricity_tax_rate": null,
+      "vat_rate": null
+    }
+  ]
+}
+
