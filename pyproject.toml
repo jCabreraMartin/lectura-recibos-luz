@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 lectura-recibos-luz = "invoice_reader.__main__:main"
+lectura-recibos-luz-gui = "invoice_reader.gui:main"
 
 [tool.setuptools.packages.find]
 include = ["invoice_reader*"]
