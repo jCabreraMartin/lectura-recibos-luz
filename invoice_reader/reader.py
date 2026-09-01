@@ -78,7 +78,9 @@ def _detect_supplier(text: str) -> str | None:
 
 
 def _billing_period(text: str) -> dict[str, Any]:
-    match = re.search(rf"{DATE}\s*[-–]\s*{DATE}", text)
+    match = re.search(
+        rf"{DATE}\s*(?:[-–]|a)\s*{DATE}", text, flags=re.IGNORECASE
+    )
     if not match:
         return {"start": None, "end": None, "days": None}
     start = datetime.strptime(match.group(1), "%d/%m/%Y").date()
@@ -91,11 +93,21 @@ def _billing_period(text: str) -> dict[str, Any]:
 
 
 def _find_power(text: str, period: str) -> Decimal | None:
-    return _find_number(text, (rf"potencia\s+{period}",), r"kW")
+    labels = (
+        rf"potencias?\s+contratadas?[^\n]{{0,40}}{period}",
+        rf"pot\.?\s*{period}",
+        rf"potencia\s+{period}",
+    )
+    return _find_number(text, labels, r"kW")
 
 
 def _find_invoice_total(text: str) -> Decimal | None:
-    for label in (r"total\s+importe\s+factura", r"importe\s+total", r"total\s+a\s+pagar"):
+    for label in (
+        r"total\s+importe\s+factura",
+        r"total\s+importe\s+a\s+pagar",
+        r"importe\s+total",
+        r"total\s+a\s+pagar",
+    ):
         match = re.search(rf"{label}[^\n\d]{{0,30}}{NUMBER}", text, re.IGNORECASE)
         if match:
             return _decimal(match.group(1))
@@ -104,8 +116,8 @@ def _find_invoice_total(text: str) -> Decimal | None:
 
 def _find_amount(text: str, labels: Iterable[str]) -> Decimal | None:
     for label in labels:
-        match = re.search(rf"^.*{label}.*$", text, re.IGNORECASE | re.MULTILINE)
-        if match:
+        matches = re.finditer(rf"^.*{label}.*$", text, re.IGNORECASE | re.MULTILINE)
+        for match in matches:
             values = re.findall(rf"-?{NUMBER}", match.group(0))
             if values:
                 return _decimal(values[-1])
@@ -115,7 +127,11 @@ def _find_amount(text: str, labels: Iterable[str]) -> Decimal | None:
 def _find_services(text: str) -> list[dict[str, Any]]:
     services: list[dict[str, Any]] = []
     for line in text.splitlines():
-        if not re.search(r"pack|mantenimiento|asistencia|proteccion|facilita", line, re.I):
+        if not re.search(
+            r"pack|mantenimiento|asistencia|proteccion|facilita|servicios?\s+endesa",
+            line,
+            re.I,
+        ):
             continue
         values = re.findall(NUMBER, line)
         if not values:
@@ -196,9 +212,15 @@ def read_invoice(
             "valle_kw": _as_float(power_valle),
         },
         "amounts": {
-            "energy_total_eur": _as_float(_find_amount(text, (r"total\s+energ.?a",))),
-            "services_total_eur": _as_float(_find_amount(text, (r"total\s+servicios",))),
-            "electricity_tax_eur": _as_float(_find_amount(text, (r"impuesto\s+sobre\s+electricidad",))),
+            "energy_total_eur": _as_float(
+                _find_amount(text, (r"(?:total\s+)?energ.?a",))
+            ),
+            "services_total_eur": _as_float(
+                _find_amount(text, (r"total\s+servicios", r"importe\s+servicios"))
+            ),
+            "electricity_tax_eur": _as_float(
+                _find_amount(text, (r"impuesto\s+(?:sobre\s+)?electricidad",))
+            ),
             "meter_rental_eur": _as_float(_find_amount(text, (r"alquiler.*(?:equipo|contador)",))),
             "invoice_total_eur": _as_float(total),
         },
