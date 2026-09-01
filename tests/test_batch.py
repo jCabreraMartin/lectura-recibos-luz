@@ -1,6 +1,9 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
-from invoice_reader.batch import build_history, render_html
+from invoice_reader.batch import build_history, process_folder, render_html
 
 
 def invoice(start, end, days, total_kwh, p1, p2, p3, amount):
@@ -47,6 +50,68 @@ class BatchTests(unittest.TestCase):
         report = render_html(self.history)
         self.assertIn("Informe historico de electricidad", report)
         self.assertNotIn("factura-privada.pdf", report)
+
+    @patch("invoice_reader.batch.read_invoice")
+    def test_incremental_processing_and_duplicate_detection(self, reader):
+        with TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            first = folder / "primera.pdf"
+            first.write_bytes(b"factura uno")
+            reader.return_value = invoice(
+                "2026-04-01", "2026-05-01", 30, 100, 20, 30, 50, 40
+            )
+            reader.return_value["source"]["filename"] = first.name
+
+            initial = process_folder(folder)
+            self.assertEqual(initial["processing"]["new_count"], 1)
+            self.assertEqual(reader.call_count, 1)
+
+            duplicate = folder / "copia-con-otro-nombre.pdf"
+            duplicate.write_bytes(first.read_bytes())
+            repeated = process_folder(folder, existing_history=initial)
+            self.assertEqual(repeated["invoice_count"], 1)
+            self.assertEqual(repeated["processing"]["skipped_count"], 2)
+            self.assertEqual(repeated["processing"]["duplicate_count"], 2)
+            self.assertEqual(reader.call_count, 1)
+
+    @patch("invoice_reader.batch.read_invoice")
+    def test_changed_file_replaces_previous_invoice(self, reader):
+        with TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            path = folder / "factura.pdf"
+            path.write_bytes(b"version uno")
+            original = invoice(
+                "2026-04-01", "2026-05-01", 30, 100, 20, 30, 50, 40
+            )
+            original["source"]["filename"] = path.name
+            reader.return_value = original
+            initial = process_folder(folder)
+
+            path.write_bytes(b"version dos")
+            changed = invoice(
+                "2026-04-01", "2026-05-01", 30, 120, 20, 30, 70, 45
+            )
+            changed["source"]["filename"] = path.name
+            reader.return_value = changed
+            updated = process_folder(folder, existing_history=initial)
+
+            self.assertEqual(updated["invoice_count"], 1)
+            self.assertEqual(updated["totals"]["consumption_kwh"], 120)
+            self.assertEqual(updated["processing"]["updated_count"], 1)
+
+    @patch("invoice_reader.batch.read_invoice", side_effect=ValueError("PDF no valido"))
+    def test_processing_error_is_reported_without_stopping_folder(self, reader):
+        with TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            (folder / "incorrecta.pdf").write_bytes(b"no es un pdf")
+
+            history = process_folder(folder)
+
+            self.assertEqual(history["invoice_count"], 0)
+            self.assertEqual(history["processing"]["error_count"], 1)
+            self.assertEqual(
+                history["processing"]["errors"][0]["filename"], "incorrecta.pdf"
+            )
 
 
 if __name__ == "__main__":
