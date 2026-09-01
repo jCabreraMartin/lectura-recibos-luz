@@ -94,3 +94,18 @@ leen los archivos nuevos o modificados. El histórico conserva facturas ya
 procesadas aunque el PDF original deje de estar en la carpeta. El resumen de la
 ejecución indica nuevas, actualizadas, indexadas, duplicadas y errores.
 
+## Comparar tarifas
+
+Copia `ofertas.example.json` como `ofertas.private.json`, completa los precios y
+ejecuta:
+
+```powershell
+lectura-recibos-luz --folder facturas --output-dir salidas --offers ofertas.private.json
+```
+
+Se crean `salidas/comparacion_tarifas.json` y
+`salidas/comparacion_tarifas.html`. Todos los precios se expresan sin impuestos.
+Una oferta solo muestra ahorro final cuando contiene energía, potencia,
+servicios, otros costes, contador e impuestos. Si faltan datos, el informe
+muestra únicamente el coste parcial conocido y señala los campos pendientes.
+
