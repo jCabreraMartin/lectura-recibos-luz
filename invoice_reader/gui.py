@@ -10,6 +10,7 @@ from typing import Any
 
 from .batch import write_history
 from .tariffs import load_offers, write_comparison
+from .market import search_compare_and_write
 
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -152,6 +153,8 @@ class OptimizerApp(tk.Tk):
         ttk.Button(actions, text="Cargar oferta", command=self._load_offer).pack(side="left", padx=8)
         self.process_button = ttk.Button(actions, text="Procesar y comparar", command=self._start_processing)
         self.process_button.pack(side="right")
+        self.search_button = ttk.Button(actions, text="Buscar ofertas actuales", command=self._start_search)
+        self.search_button.pack(side="right", padx=8)
         ttk.Label(root, textvariable=self.status, wraplength=850).pack(fill="x", pady=(14, 8))
         reports = ttk.Frame(root)
         reports.pack(fill="x")
@@ -224,6 +227,24 @@ class OptimizerApp(tk.Tk):
         self.status.set("Procesando facturas y comparando la oferta...")
         threading.Thread(target=self._process, daemon=True).start()
 
+    def _start_search(self) -> None:
+        self.process_button.configure(state="disabled")
+        self.search_button.configure(state="disabled")
+        self.status.set("Consultando tarifas publicas oficiales y comparando localmente...")
+        threading.Thread(target=self._search, daemon=True).start()
+
+    def _search(self) -> None:
+        try:
+            output = Path(self.output.get())
+            _json_path, history_html, history = write_history(Path(self.folder.get()), output)
+            _offers, _comparison_json, comparison_html, comparison = search_compare_and_write(history, output)
+            self.report_paths = {"history": history_html, "comparison": comparison_html}
+            errors = comparison.get("search", {}).get("errors", [])
+            result = f"Encontradas {len(comparison['offers'])} ofertas; fuentes con error: {len(errors)}. Informe preparado."
+            self.after(0, lambda: self._finish(result))
+        except Exception as exc:
+            self.after(0, lambda: self._finish(f"Error en la busqueda: {exc}", error=True))
+
     def _process(self) -> None:
         try:
             output = Path(self.output.get())
@@ -246,6 +267,7 @@ class OptimizerApp(tk.Tk):
 
     def _finish(self, message: str, error: bool = False) -> None:
         self.process_button.configure(state="normal")
+        self.search_button.configure(state="normal")
         self.status.set(message)
         if error:
             messagebox.showerror("No se pudo procesar", message)
