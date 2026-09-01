@@ -134,3 +134,22 @@ También puede ejecutarse desde terminal:
 lectura-recibos-luz --folder facturas --output-dir salidas --search-offers
 ```
 
+## Distribucion para Windows
+
+El instalador incluye la aplicacion, Python, Tesseract y los idiomas OCR. En un
+equipo instalado, los datos privados se crean en
+`Documentos\OptimizadorFacturaElectrica`; nunca se guardan en la carpeta del
+programa. El codigo fuente y el instalador no contienen facturas ni ofertas
+privadas.
+
+Durante cada proceso, la ventana muestra el avance por factura y guarda una
+traza privada en `salidas\procesamiento.log` para poder diagnosticar esperas o
+errores sin alterar los PDF originales.
+
+Para generar una version desde el codigo fuente:
+
+```powershell
+python -m pip install pyinstaller
+pyinstaller --noconfirm --clean packaging\lectura_recibos_luz.spec
+iscc packaging\installer.iss
+```
