@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import queue
+import sys
 import threading
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Any
@@ -14,6 +17,15 @@ from .market import search_compare_and_write
 
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
+
+
+def default_data_dir() -> Path:
+    configured = os.environ.get("LECTURA_RECIBOS_DATA_DIR")
+    if configured:
+        return Path(configured)
+    if not getattr(sys, "frozen", False) and (PROJECT_DIR / "facturas").is_dir():
+        return PROJECT_DIR
+    return Path.home() / "Documents" / "OptimizadorFacturaElectrica"
 
 
 def _number(value: str, field: str, percentage: bool = False) -> float | None:
@@ -96,11 +108,18 @@ class OptimizerApp(tk.Tk):
         self.geometry("920x760")
         self.minsize(820, 680)
         self.configure(bg="#f4f7fb")
-        self.folder = tk.StringVar(value=str(PROJECT_DIR / "facturas"))
-        self.output = tk.StringVar(value=str(PROJECT_DIR / "salidas"))
-        self.offers_path = tk.StringVar(value=str(PROJECT_DIR / "ofertas.private.json"))
+        data_dir = default_data_dir()
+        (data_dir / "facturas").mkdir(parents=True, exist_ok=True)
+        (data_dir / "salidas").mkdir(parents=True, exist_ok=True)
+        self.folder = tk.StringVar(value=str(data_dir / "facturas"))
+        self.output = tk.StringVar(value=str(data_dir / "salidas"))
+        self.offers_path = tk.StringVar(value=str(data_dir / "ofertas.private.json"))
         self.fields = {key: tk.StringVar() for key in offer_to_form({})}
         self.status = tk.StringVar(value="Preparado para procesar facturas.")
+        self.progress_text = tk.StringVar(value="")
+        self.progress_value = tk.DoubleVar(value=0)
+        self.worker_events: queue.Queue[tuple[str, Any]] = queue.Queue()
+        self._polling_events = False
         self.report_paths: dict[str, Path] = {}
         self._build()
         self._load_offer(silent=True)
@@ -185,7 +204,9 @@ class OptimizerApp(tk.Tk):
         self._path_row(locations, "Ofertas", self.offers_path, self._choose_offers, 2)
         ttk.Label(settings, text="Normalmente no necesitas cambiar estas rutas. Las carpetas privadas estan excluidas del repositorio.", foreground="#66758a", wraplength=760).pack(anchor="w", pady=14)
 
-        ttk.Label(root, textvariable=self.status, wraplength=850).pack(fill="x", pady=(14, 8))
+        ttk.Label(root, textvariable=self.status, wraplength=850).pack(fill="x", pady=(14, 4))
+        ttk.Progressbar(root, variable=self.progress_value, maximum=100).pack(fill="x", pady=2)
+        ttk.Label(root, textvariable=self.progress_text, foreground="#50627a").pack(fill="x")
         self._toggle_energy_fields()
 
     def _path_row(self, parent: ttk.LabelFrame, label: str, variable: tk.StringVar, command: Any, row: int) -> None:
@@ -249,19 +270,22 @@ class OptimizerApp(tk.Tk):
     def _start_processing(self) -> None:
         if not self._save_offer():
             return
-        self._set_busy(True)
-        self.status.set("Procesando facturas y comparando la oferta...")
-        threading.Thread(target=self._process, daemon=True).start()
+        folder = Path(self.folder.get())
+        output = Path(self.output.get())
+        offers_path = Path(self.offers_path.get())
+        self._start_worker("Procesando facturas y comparando la oferta...")
+        threading.Thread(target=self._process, args=(folder, output, offers_path), daemon=True).start()
 
     def _start_history(self) -> None:
-        self._set_busy(True)
-        self.status.set("Actualizando el historico de facturas...")
-        threading.Thread(target=self._history, daemon=True).start()
+        folder = Path(self.folder.get())
+        output = Path(self.output.get())
+        self._start_worker("Actualizando el historico de facturas...")
+        threading.Thread(target=self._history, args=(folder, output), daemon=True).start()
 
-    def _history(self) -> None:
+    def _history(self, folder: Path, output: Path) -> None:
         try:
             _json_path, html_path, history = write_history(
-                Path(self.folder.get()), Path(self.output.get())
+                folder, output, progress_callback=lambda *event: self._progress(output, *event)
             )
             self.report_paths["history"] = html_path
             stats = history["processing"]
@@ -270,33 +294,38 @@ class OptimizerApp(tk.Tk):
                 f"nuevas {stats['new_count']}, omitidas {stats['skipped_count']}, "
                 f"errores {stats['error_count']}; alertas detectadas {len(history.get('alerts', []))}."
             )
-            self.after(0, lambda: self._finish(result))
+            self.worker_events.put(("finish", (result, False)))
         except Exception as exc:
-            self.after(0, lambda: self._finish(f"Error al actualizar: {exc}", error=True))
+            self._write_log(output, f"ERROR | {exc}")
+            self.worker_events.put(("finish", (f"Error al actualizar: {exc}", True)))
 
     def _start_search(self) -> None:
-        self._set_busy(True)
-        self.status.set("Consultando tarifas publicas oficiales y comparando localmente...")
-        threading.Thread(target=self._search, daemon=True).start()
+        folder = Path(self.folder.get())
+        output = Path(self.output.get())
+        self._start_worker("Consultando tarifas publicas oficiales y comparando localmente...")
+        threading.Thread(target=self._search, args=(folder, output), daemon=True).start()
 
-    def _search(self) -> None:
+    def _search(self, folder: Path, output: Path) -> None:
         try:
-            output = Path(self.output.get())
-            _json_path, history_html, history = write_history(Path(self.folder.get()), output)
+            _json_path, history_html, history = write_history(
+                folder, output, progress_callback=lambda *event: self._progress(output, *event)
+            )
             _offers, _comparison_json, comparison_html, comparison = search_compare_and_write(history, output)
             self.report_paths = {"history": history_html, "comparison": comparison_html}
             errors = comparison.get("search", {}).get("errors", [])
             result = f"Encontradas {len(comparison['offers'])} ofertas; fuentes con error: {len(errors)}. Informe preparado."
-            self.after(0, lambda: self._finish(result))
+            self.worker_events.put(("finish", (result, False)))
         except Exception as exc:
-            self.after(0, lambda: self._finish(f"Error en la busqueda: {exc}", error=True))
+            self._write_log(output, f"ERROR | {exc}")
+            self.worker_events.put(("finish", (f"Error en la busqueda: {exc}", True)))
 
-    def _process(self) -> None:
+    def _process(self, folder: Path, output: Path, offers_path: Path) -> None:
         try:
-            output = Path(self.output.get())
-            json_path, html_path, history = write_history(Path(self.folder.get()), output)
+            json_path, html_path, history = write_history(
+                folder, output, progress_callback=lambda *event: self._progress(output, *event)
+            )
             comparison_json, comparison_html, comparison = write_comparison(
-                history, Path(self.offers_path.get()), output
+                history, offers_path, output
             )
             self.report_paths = {"history": html_path, "comparison": comparison_html}
             stats = history["processing"]
@@ -307,13 +336,60 @@ class OptimizerApp(tk.Tk):
                 f"Oferta {offer['status']}: coste estimado "
                 f"{offer['estimated_total_eur'] if offer['estimated_total_eur'] is not None else 'pendiente'}."
             )
-            self.after(0, lambda: self._finish(result))
+            self.worker_events.put(("finish", (result, False)))
         except Exception as exc:
-            self.after(0, lambda: self._finish(f"Error: {exc}", error=True))
+            self._write_log(output, f"ERROR | {exc}")
+            self.worker_events.put(("finish", (f"Error: {exc}", True)))
+
+    def _start_worker(self, message: str) -> None:
+        self._set_busy(True)
+        self.status.set(message)
+        self.progress_value.set(0)
+        self.progress_text.set("Preparando...")
+        if not self._polling_events:
+            self._polling_events = True
+            self.after(100, self._poll_worker_events)
+
+    def _poll_worker_events(self) -> None:
+        try:
+            while True:
+                event, payload = self.worker_events.get_nowait()
+                if event == "progress":
+                    current, total, filename, state = payload
+                    self.progress_value.set((current / total) * 100 if total else 0)
+                    label = {
+                        "processing": "Leyendo",
+                        "processed": "Procesada",
+                        "skipped": "Ya estaba procesada",
+                        "error": "Error",
+                    }[state]
+                    self.progress_text.set(f"{current}/{total} · {label}: {filename}")
+                elif event == "finish":
+                    message, error = payload
+                    self._polling_events = False
+                    self._finish(message, error=error)
+                    return
+        except queue.Empty:
+            pass
+        self.after(100, self._poll_worker_events)
+
+    def _progress(self, output: Path, current: int, total: int, filename: str, state: str) -> None:
+        self.worker_events.put(("progress", (current, total, filename, state)))
+        self._write_log(output, f"{state.upper()} | {current}/{total} | {filename}")
+
+    @staticmethod
+    def _write_log(output: Path, message: str) -> None:
+        output.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
+        with (output / "procesamiento.log").open("a", encoding="utf-8") as stream:
+            stream.write(f"{timestamp} | {message}\n")
 
     def _finish(self, message: str, error: bool = False) -> None:
         self._set_busy(False)
         self.status.set(message)
+        if not error:
+            self.progress_value.set(100)
+            self.progress_text.set("Proceso terminado.")
         if error:
             messagebox.showerror("No se pudo procesar", message)
 
@@ -338,4 +414,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
