@@ -26,6 +26,74 @@ def _date(value: str | None) -> date | None:
     return date.fromisoformat(value) if value else None
 
 
+def _change(current: float, baseline: float) -> float | None:
+    return (current / baseline - 1) * 100 if baseline else None
+
+
+def _build_alerts(invoices: list[dict[str, Any]], window: int = 3) -> list[dict[str, Any]]:
+    alerts: list[dict[str, Any]] = []
+    for index, invoice in enumerate(invoices):
+        if index < window:
+            continue
+        previous = invoices[index - window:index]
+        consumption = invoice.get("consumption", {}).get("total_kwh")
+        amount = invoice.get("amounts", {}).get("invoice_total_eur")
+        if not consumption or amount is None:
+            continue
+        previous_consumption = [item.get("consumption", {}).get("total_kwh") for item in previous]
+        previous_amounts = [item.get("amounts", {}).get("invoice_total_eur") for item in previous]
+        if any(value is None for value in previous_consumption + previous_amounts):
+            continue
+        avg_consumption = sum(float(value) for value in previous_consumption) / window
+        avg_amount = sum(float(value) for value in previous_amounts) / window
+        current_unit_cost = float(amount) / float(consumption)
+        previous_unit_costs = [
+            float(previous_amounts[pos]) / float(previous_consumption[pos])
+            for pos in range(window)
+            if previous_consumption[pos]
+        ]
+        if len(previous_unit_costs) != window:
+            continue
+        avg_unit_cost = sum(previous_unit_costs) / window
+        consumption_change = _change(float(consumption), avg_consumption)
+        amount_change = _change(float(amount), avg_amount)
+        unit_cost_change = _change(current_unit_cost, avg_unit_cost)
+        period = invoice.get("billing_period", {})
+        common = {"period_start": period.get("start"), "period_end": period.get("end")}
+
+        if consumption_change is not None and consumption_change >= 25:
+            alerts.append({
+                **common,
+                "type": "consumption_increase",
+                "severity": "high" if consumption_change >= 50 else "medium",
+                "change_pct": round(consumption_change, 1),
+                "message": f"El consumo subio un {consumption_change:.1f}% frente a la media de las tres facturas anteriores.",
+                "recommendation": "Revisar climatizacion, electrodomesticos y cambios de habitos.",
+                "action": "review_consumption",
+            })
+        if unit_cost_change is not None and unit_cost_change >= 15:
+            alerts.append({
+                **common,
+                "type": "unit_cost_increase",
+                "severity": "high" if unit_cost_change >= 25 else "medium",
+                "change_pct": round(unit_cost_change, 1),
+                "message": f"El coste efectivo por kWh subio un {unit_cost_change:.1f}% sin depender del volumen consumido.",
+                "recommendation": "Revisar precios, descuentos y servicios; conviene buscar ofertas actuales.",
+                "action": "search_offers",
+            })
+        if amount_change is not None and consumption_change is not None and amount_change >= 20 and consumption_change < 10 and (unit_cost_change is None or unit_cost_change < 15):
+            alerts.append({
+                **common,
+                "type": "unexplained_amount_increase",
+                "severity": "medium",
+                "change_pct": round(amount_change, 1),
+                "message": f"El importe subio un {amount_change:.1f}% sin un aumento equivalente del consumo.",
+                "recommendation": "Comprobar servicios, regularizaciones y cambios contractuales en la factura.",
+                "action": "review_invoice",
+            })
+    return alerts
+
+
 def build_history(invoices: list[dict[str, Any]]) -> dict[str, Any]:
     ordered = sorted(
         invoices,
@@ -93,6 +161,7 @@ def build_history(invoices: list[dict[str, Any]]) -> dict[str, Any]:
             for name, amount in sorted(services.items())
         ],
         "warnings": warnings,
+        "alerts": _build_alerts(ordered),
         "invoices": ordered,
     }
 
@@ -251,6 +320,17 @@ def render_html(history: dict[str, Any]) -> str:
             + "".join(f"<li>{html.escape(item)}</li>" for item in history["warnings"])
             + "</ul></section>"
         )
+    alerts_box = ""
+    if history.get("alerts"):
+        alert_rows = []
+        for alert in reversed(history["alerts"]):
+            period = f"{alert.get('period_start') or '?'} a {alert.get('period_end') or '?'}"
+            alert_rows.append(
+                f"<article class='alert {html.escape(alert['severity'])}'>"
+                f"<div><strong>{html.escape(alert['message'])}</strong><small>{html.escape(period)}</small></div>"
+                f"<p>{html.escape(alert['recommendation'])}</p></article>"
+            )
+        alerts_box = "<section class='alerts'><h2>Alertas detectadas</h2>" + "".join(alert_rows) + "</section>"
 
     return f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -266,8 +346,9 @@ table{{width:100%;border-collapse:collapse;min-width:820px}} th,td{{padding:12px
 .num{{text-align:right}} .bar-row{{display:grid;grid-template-columns:190px 1fr 100px;gap:12px;align-items:center;margin:12px 0}} .bar-track{{height:12px;background:#edf2f8;border-radius:10px;overflow:hidden}} .bar{{height:100%;background:linear-gradient(90deg,#70a6ff,#276ef1);border-radius:10px}}
 .periods{{display:flex;gap:28px;flex-wrap:wrap}} .period{{display:flex;align-items:center;gap:10px}} .period>span{{width:12px;height:36px;border-radius:8px}} .period small{{display:block;color:var(--muted)}}
 .services{{list-style:none;padding:0;margin:0}} .services li{{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)}} .warnings{{border-color:#f1c46b;background:#fffaf0}}
+.alerts{{border-color:#f1c46b}}.alert{{display:grid;grid-template-columns:1.3fr 1fr;gap:18px;padding:14px 16px;margin:10px 0;border-radius:10px;background:#fffaf0;border-left:5px solid #f2a93b}}.alert.high{{border-left-color:#d64545;background:#fff4f4}}.alert small{{display:block;color:var(--muted);margin-top:3px}}.alert p{{margin:0;color:var(--muted)}}
 footer{{color:var(--muted);text-align:center;margin-top:24px;font-size:13px}}
-@media(max-width:760px){{.cards{{grid-template-columns:1fr 1fr}}.bar-row{{grid-template-columns:1fr}}}}
+@media(max-width:760px){{.cards{{grid-template-columns:1fr 1fr}}.bar-row,.alert{{grid-template-columns:1fr}}}}
 @media print{{body{{background:white}}main{{max-width:none;padding:0}}section,.card,header{{break-inside:avoid}}}}
 </style></head><body><main>
 <header><h1>Informe historico de electricidad</h1><p>{history['invoice_count']} facturas - {_es(history['coverage']['days'], 0)} dias analizados - {history['coverage']['start']} a {history['coverage']['end']}</p></header>
@@ -277,6 +358,7 @@ footer{{color:var(--muted);text-align:center;margin-top:24px;font-size:13px}}
 <div class="card"><small>Proyeccion anual</small><strong>{_es(indicators['annualized_consumption_kwh'],0)} kWh</strong></div>
 <div class="card"><small>Coste total / consumo</small><strong>{_es(indicators['all_in_cost_eur_kwh'],4)} EUR/kWh</strong></div>
 </div>
+{alerts_box}
 <section><h2>Evolucion del consumo</h2>{''.join(chart_rows)}</section>
 <section><h2>Distribucion horaria</h2><div class="periods">{''.join(distribution)}</div></section>
 <section><h2>Detalle por factura</h2><table><thead><tr><th>Periodo</th><th>Compania</th><th class="num">Total kWh</th><th class="num">Punta</th><th class="num">Llano</th><th class="num">Valle</th><th class="num">Factura</th></tr></thead><tbody>{''.join(rows)}</tbody></table></section>
