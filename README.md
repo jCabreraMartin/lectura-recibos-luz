@@ -122,6 +122,12 @@ en el equipo. La aplicación guarda la URL y fecha de consulta, aplica las tarif
 al histórico local y muestra los supuestos utilizados. Una fuente que cambie de
 formato se registra como error sin impedir que se comparen las demás.
 
+El informe historico compara cada factura con la media de las tres anteriores y
+genera alertas cuando el consumo aumenta al menos un 25%, el coste efectivo por
+kWh sube al menos un 15% o el importe crece sin una variacion equivalente del
+consumo. Cada aviso explica la causa probable y recomienda revisar el consumo,
+la factura o buscar ofertas actuales.
+
 También puede ejecutarse desde terminal:
 
 ```powershell
