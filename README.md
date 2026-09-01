@@ -109,3 +109,10 @@ Una oferta solo muestra ahorro final cuando contiene energía, potencia,
 servicios, otros costes, contador e impuestos. Si faltan datos, el informe
 muestra únicamente el coste parcial conocido y señala los campos pendientes.
 
+## Interfaz para Windows
+
+Abre `Abrir Optimizador.cmd` con doble clic. La aplicación permite elegir las
+carpetas, completar o cargar una oferta, procesar las facturas y abrir los dos
+informes sin utilizar comandos. El formulario admite coma decimal y guarda la
+oferta en `ofertas.private.json`, excluido de Git.
+
