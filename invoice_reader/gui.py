@@ -268,7 +268,7 @@ class OptimizerApp(tk.Tk):
             result = (
                 f"Historico actualizado: {history['invoice_count']} facturas; "
                 f"nuevas {stats['new_count']}, omitidas {stats['skipped_count']}, "
-                f"errores {stats['error_count']}."
+                f"errores {stats['error_count']}; alertas detectadas {len(history.get('alerts', []))}."
             )
             self.after(0, lambda: self._finish(result))
         except Exception as exc:
