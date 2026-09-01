@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -17,6 +18,9 @@ def find_tesseract() -> Path:
     configured = os.environ.get("TESSERACT_CMD")
     candidates = [
         Path(configured) if configured else None,
+        Path(getattr(sys, "_MEIPASS", "")) / "tesseract/tesseract.exe"
+        if getattr(sys, "frozen", False)
+        else None,
         Path(shutil.which("tesseract") or "") if shutil.which("tesseract") else None,
         Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/Tesseract-OCR/tesseract.exe",
         Path(os.environ.get("ProgramFiles", "")) / "Tesseract-OCR/tesseract.exe",
@@ -34,6 +38,9 @@ def find_tessdata() -> Path | None:
     configured = os.environ.get("TESSDATA_PREFIX")
     candidates = [
         Path(configured) if configured else None,
+        Path(getattr(sys, "_MEIPASS", "")) / "tesseract/tessdata"
+        if getattr(sys, "frozen", False)
+        else None,
         Path(os.environ.get("LOCALAPPDATA", "")) / "lectura-recibos-luz/tessdata",
     ]
     for candidate in candidates:
@@ -121,4 +128,3 @@ def ocr_pdf(path: Path, language: str | None = None, scale: float = 2.5) -> list
     finally:
         document.close()
     return pages
-
