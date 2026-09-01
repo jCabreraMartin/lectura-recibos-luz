@@ -17,6 +17,7 @@ from .market import search_compare_and_write
 
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
+SETTINGS_FILENAME = "configuracion.json"
 
 
 def default_data_dir() -> Path:
@@ -26,6 +27,40 @@ def default_data_dir() -> Path:
     if not getattr(sys, "frozen", False) and (PROJECT_DIR / "facturas").is_dir():
         return PROJECT_DIR
     return Path.home() / "Documents" / "OptimizadorFacturaElectrica"
+
+
+def suggested_paths(data_dir: Path) -> dict[str, Path]:
+    legacy = Path.home() / "Documents" / "ChatGPT" / "OptimizadorFacturaElectrica"
+    base = legacy if any((legacy / "facturas").glob("*.pdf")) else data_dir
+    offers = base / "ofertas.private.json"
+    if not offers.is_file():
+        offers = data_dir / "ofertas.private.json"
+    return {
+        "facturas": base / "facturas",
+        "salidas": base / "salidas",
+        "ofertas": offers,
+    }
+
+
+def load_settings(data_dir: Path) -> dict[str, Path] | None:
+    path = data_dir / SETTINGS_FILENAME
+    if not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return {key: Path(raw[key]) for key in ("facturas", "salidas", "ofertas")}
+    except (OSError, KeyError, TypeError, json.JSONDecodeError):
+        return None
+
+
+def save_settings(data_dir: Path, paths: dict[str, Path]) -> Path:
+    data_dir.mkdir(parents=True, exist_ok=True)
+    path = data_dir / SETTINGS_FILENAME
+    path.write_text(
+        json.dumps({key: str(value) for key, value in paths.items()}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return path
 
 
 def _number(value: str, field: str, percentage: bool = False) -> float | None:
@@ -108,12 +143,14 @@ class OptimizerApp(tk.Tk):
         self.geometry("920x760")
         self.minsize(820, 680)
         self.configure(bg="#f4f7fb")
-        data_dir = default_data_dir()
-        (data_dir / "facturas").mkdir(parents=True, exist_ok=True)
-        (data_dir / "salidas").mkdir(parents=True, exist_ok=True)
-        self.folder = tk.StringVar(value=str(data_dir / "facturas"))
-        self.output = tk.StringVar(value=str(data_dir / "salidas"))
-        self.offers_path = tk.StringVar(value=str(data_dir / "ofertas.private.json"))
+        self.data_dir = default_data_dir()
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        paths = load_settings(self.data_dir) or suggested_paths(self.data_dir)
+        paths["facturas"].mkdir(parents=True, exist_ok=True)
+        paths["salidas"].mkdir(parents=True, exist_ok=True)
+        self.folder = tk.StringVar(value=str(paths["facturas"]))
+        self.output = tk.StringVar(value=str(paths["salidas"]))
+        self.offers_path = tk.StringVar(value=str(paths["ofertas"]))
         self.fields = {key: tk.StringVar() for key in offer_to_form({})}
         self.status = tk.StringVar(value="Preparado para procesar facturas.")
         self.progress_text = tk.StringVar(value="")
@@ -123,6 +160,8 @@ class OptimizerApp(tk.Tk):
         self.report_paths: dict[str, Path] = {}
         self._build()
         self._load_offer(silent=True)
+        if load_settings(self.data_dir) is None:
+            self.after(150, self._show_first_run)
 
     def _build(self) -> None:
         style = ttk.Style(self)
@@ -202,6 +241,7 @@ class OptimizerApp(tk.Tk):
         self._path_row(locations, "Facturas", self.folder, self._choose_folder, 0)
         self._path_row(locations, "Salidas", self.output, self._choose_output, 1)
         self._path_row(locations, "Ofertas", self.offers_path, self._choose_offers, 2)
+        ttk.Button(settings, text="Guardar configuracion", command=self._save_settings).pack(anchor="e", pady=(12, 0))
         ttk.Label(settings, text="Normalmente no necesitas cambiar estas rutas. Las carpetas privadas estan excluidas del repositorio.", foreground="#66758a", wraplength=760).pack(anchor="w", pady=14)
 
         ttk.Label(root, textvariable=self.status, wraplength=850).pack(fill="x", pady=(14, 4))
@@ -230,6 +270,82 @@ class OptimizerApp(tk.Tk):
         if selected:
             self.offers_path.set(selected)
             self._load_offer()
+
+    def _current_paths(self) -> dict[str, Path]:
+        return {
+            "facturas": Path(self.folder.get()),
+            "salidas": Path(self.output.get()),
+            "ofertas": Path(self.offers_path.get()),
+        }
+
+    def _save_settings(self, notify: bool = True) -> bool:
+        try:
+            paths = self._current_paths()
+            paths["facturas"].mkdir(parents=True, exist_ok=True)
+            paths["salidas"].mkdir(parents=True, exist_ok=True)
+            save_settings(self.data_dir, paths)
+            if notify:
+                self.status.set("Configuracion guardada. Estas rutas se conservaran al volver a abrir.")
+            return True
+        except OSError as exc:
+            messagebox.showerror("No se pudo guardar la configuracion", str(exc))
+            return False
+
+    def _show_first_run(self) -> None:
+        wizard = tk.Toplevel(self)
+        wizard.title("Primer inicio")
+        wizard.transient(self)
+        wizard.grab_set()
+        wizard.resizable(False, False)
+        body = ttk.Frame(wizard, padding=22)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text="Prepara tus carpetas", font=("Segoe UI", 17, "bold")).grid(
+            row=0, column=0, columnspan=3, sticky="w", pady=(0, 6)
+        )
+        count = len(list(Path(self.folder.get()).glob("*.pdf")))
+        detail = (
+            f"Hemos encontrado {count} facturas en una ubicacion anterior. Confirma las rutas para conservar tu historico."
+            if count
+            else "Elige donde guardar tus facturas y resultados. Puedes cambiarlo mas adelante en Configuracion."
+        )
+        ttk.Label(body, text=detail, wraplength=610).grid(
+            row=1, column=0, columnspan=3, sticky="w", pady=(0, 16)
+        )
+        self._wizard_path_row(body, "Facturas", self.folder, 2, directory=True)
+        self._wizard_path_row(body, "Resultados", self.output, 3, directory=True)
+        ttk.Label(
+            body,
+            text="Las facturas se procesan localmente y no se copian ni se suben a Internet.",
+            foreground="#50627a",
+        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(14, 12))
+        ttk.Button(
+            body,
+            text="Guardar y continuar",
+            style="Action.TButton",
+            command=lambda: self._finish_first_run(wizard),
+        ).grid(row=5, column=2, sticky="e")
+        body.columnconfigure(1, weight=1)
+        wizard.protocol("WM_DELETE_WINDOW", lambda: self._finish_first_run(wizard))
+        wizard.wait_visibility()
+        wizard.focus_force()
+
+    def _wizard_path_row(
+        self, parent: ttk.Frame, label: str, variable: tk.StringVar, row: int, directory: bool
+    ) -> None:
+        ttk.Label(parent, text=label, width=11).grid(row=row, column=0, sticky="w", pady=5)
+        ttk.Entry(parent, textvariable=variable, width=62).grid(row=row, column=1, sticky="ew", padx=8, pady=5)
+
+        def choose() -> None:
+            selected = filedialog.askdirectory(parent=parent, initialdir=variable.get()) if directory else ""
+            if selected:
+                variable.set(selected)
+
+        ttk.Button(parent, text="Elegir...", command=choose).grid(row=row, column=2, pady=5)
+
+    def _finish_first_run(self, wizard: tk.Toplevel) -> None:
+        if self._save_settings(notify=False):
+            wizard.destroy()
+            self.status.set("Configuracion inicial guardada. Ya puedes actualizar tus facturas.")
 
     def _toggle_energy_fields(self) -> None:
         fixed = self.fields["energy_type"].get() != "periods"
@@ -270,6 +386,8 @@ class OptimizerApp(tk.Tk):
     def _start_processing(self) -> None:
         if not self._save_offer():
             return
+        if not self._save_settings(notify=False):
+            return
         folder = Path(self.folder.get())
         output = Path(self.output.get())
         offers_path = Path(self.offers_path.get())
@@ -277,6 +395,8 @@ class OptimizerApp(tk.Tk):
         threading.Thread(target=self._process, args=(folder, output, offers_path), daemon=True).start()
 
     def _start_history(self) -> None:
+        if not self._save_settings(notify=False):
+            return
         folder = Path(self.folder.get())
         output = Path(self.output.get())
         self._start_worker("Actualizando el historico de facturas...")
@@ -300,6 +420,8 @@ class OptimizerApp(tk.Tk):
             self.worker_events.put(("finish", (f"Error al actualizar: {exc}", True)))
 
     def _start_search(self) -> None:
+        if not self._save_settings(notify=False):
+            return
         folder = Path(self.folder.get())
         output = Path(self.output.get())
         self._start_worker("Consultando tarifas publicas oficiales y comparando localmente...")
