@@ -146,6 +146,10 @@ Durante cada proceso, la ventana muestra el avance por factura y guarda una
 traza privada en `salidas\procesamiento.log` para poder diagnosticar esperas o
 errores sin alterar los PDF originales.
 
+En el primer inicio, un asistente propone las carpetas privadas y detecta una
+ubicacion anterior cuando contiene facturas. Las rutas confirmadas se guardan
+localmente y se recuperan en las siguientes aperturas.
+
 Para generar una version desde el codigo fuente:
 
 ```powershell
