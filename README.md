@@ -76,6 +76,10 @@ lectura-recibos-luz --folder facturas --output-dir salidas --no-ocr
 lectura-recibos-luz --folder facturas --output-dir salidas --ocr-language spa+eng
 ```
 
+En Windows, el lector también detecta automáticamente los idiomas instalados en
+`%LOCALAPPDATA%\lectura-recibos-luz\tessdata`. Esto permite añadir
+`spa.traineddata` sin necesitar permisos de administrador.
+
 Se generan dos archivos privados:
 
 - `salidas/historico_facturas.json`, con todos los datos estructurados;
